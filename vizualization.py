@@ -16,7 +16,7 @@ def visualize_results(city_gdf, population_gdf, existing_stations_gdf, candidate
     city_gdf.plot(ax=ax, alpha=0.3, color='lightgray', edgecolor='black')
     
     # Plot population density (sized by population)
-    population_gdf.plot(ax=ax, alpha=0.5, color='blue', markersize=population_gdf['population']/500)
+    population_gdf.plot(ax=ax, alpha=0.5, color='blue', markersize=population_gdf['population']/500, label='Population')
     
     # Plot existing stations
     if len(existing_stations_gdf) > 0:

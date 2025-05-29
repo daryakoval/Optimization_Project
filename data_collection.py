@@ -9,6 +9,7 @@ import census
 
 
 from constants import CENSUS_API_KEY, CITY, MIN_DISTANCE_BETWEEN_STATIONS, NREL_API_KEY, NUM_CANDIDATE_LOCATIONS
+from fallback import generate_synthetic_population_data, generate_synthetic_charging_stations
 
 # =============================================================================
 # STEP 1: DATA COLLECTION
@@ -60,59 +61,123 @@ def get_population_data(city_gdf):
         city_geom = city_gdf.iloc[0].geometry
         minx, miny, maxx, maxy = city_geom.bounds
         
-        # Get the state code for the city
+        # Get the state code and try to determine county
         state_name = CITY.split(',')[1].strip()
+        city_name = CITY.split(',')[0].strip()
+        
         state_fips = {
-            'WA': '53', 'OR': '41', 'CA': '06', 'TX': '48'
+            'WA': '53', 'OR': '41', 'CA': '06', 'TX': '48', 'NY': '36', 'FL': '12', 'IL': '17'
         }.get(state_name, '53')  # default to WA
         
-        # Get all census tract data for the state (we'll filter by geography later)
-        census_data = c.acs5.state_county_tract(
-            fields=('NAME', 'B01003_001E', 'B25001_001E'),  # Population and housing units
-            state_fips=state_fips,
-            county_fips='*',
-            tract='*',
-            year=2019
-        )
+        # Try to get data for specific counties first
+        county_fips = get_county_fips_for_city(city_name, state_name, state_fips)
+        
+        if county_fips:
+            print(f"Getting census data for specific counties: {county_fips}")
+            census_data = []
+            for county in county_fips:
+                try:
+                    county_data = c.acs5.state_county_tract(
+                        fields=('NAME', 'B01003_001E'),  # Population
+                        state_fips=state_fips,
+                        county_fips=county,
+                        tract='*',
+                        year=2019
+                    )
+                    census_data.extend(county_data)
+                except:
+                    continue
+        else:
+            # Fallback: get limited data for the state
+            print("County not found, getting limited state data")
+            census_data = c.acs5.state_county_tract(
+                fields=('NAME', 'B01003_001E'),
+                state_fips=state_fips,
+                county_fips='*',
+                tract='*',
+                year=2019
+            )
+            # Take only first 200 tracts to avoid processing entire state
+            census_data = census_data[:200]
         
         # Convert to DataFrame
         census_df = pd.DataFrame(census_data)
-        print(f"Retrieved census data for {len(census_df)} tracts in state")
+        print(f"Retrieved census data for {len(census_df)} tracts")
         
-        # Filter census tracts to only those that might intersect with our city
-        # This is a rough approximation - ideally you'd use census tract shapefiles
-        filtered_census = filter_census_data_by_city(census_df, city_gdf)
-        
-        if len(filtered_census) == 0:
-            print("No census tracts found near city boundary. Using synthetic data.")
-            return generate_synthetic_population_data(city_gdf)
-        
-        # Process the filtered census data to create population points
-        return process_census_data_to_geodataframe(city_gdf, filtered_census)
+        # Process the census data to create population points
+        return process_census_data_to_geodataframe(city_gdf, census_df)
         
     except Exception as e:
         print(f"Error getting census data: {e}")
         return generate_synthetic_population_data(city_gdf)
 
+def get_county_fips_for_city(city_name, state_name, state_fips):
+    """Get county FIPS codes for major cities"""
+    # Dictionary of major cities and their county FIPS codes
+    city_county_mapping = {
+        'seattle': {'WA': ['033']},  # King County
+        'portland': {'OR': ['051']},  # Multnomah County
+        'los angeles': {'CA': ['037']},  # Los Angeles County
+        'san francisco': {'CA': ['075']},  # San Francisco County
+        'houston': {'TX': ['201']},  # Harris County
+        'dallas': {'TX': ['113']},  # Dallas County
+        'austin': {'TX': ['453']},  # Travis County
+        'new york': {'NY': ['061', '047', '081', '005', '085']},  # NYC boroughs
+        'chicago': {'IL': ['031']},  # Cook County
+        'miami': {'FL': ['086']},  # Miami-Dade County
+    }
+    
+    city_lower = city_name.lower()
+    if city_lower in city_county_mapping:
+        return city_county_mapping[city_lower].get(state_name, None)
+    
+    return None
+
 def filter_census_data_by_city(census_df, city_gdf):
     """Filter census data to tracts that are likely within or near the city"""
-    # This is a simplified approach since we don't have tract shapefiles
-    # In practice, you'd spatially join with actual census tract boundaries
+    # Get city boundary
+    city_geom = city_gdf.iloc[0].geometry
+    minx, miny, maxx, maxy = city_geom.bounds
     
-    # For now, we'll just take a reasonable sample based on city name
-    city_name = CITY.split(',')[0].strip().lower()
+    # Method 1: Try to filter by county name if it's in the city string
+    city_parts = CITY.split(',')
+    if len(city_parts) > 1:
+        # Try to find county name in census tract names
+        # Many cities are named after their county or vice versa
+        city_name = city_parts[0].strip().lower()
+        
+        # Look for city name or common county variations
+        county_patterns = [
+            city_name,
+            f"{city_name} county",
+            f"{city_name} co",
+        ]
+        
+        for pattern in county_patterns:
+            city_tracts = census_df[census_df['NAME'].str.lower().str.contains(pattern, na=False)]
+            if len(city_tracts) > 0:
+                print(f"Found {len(city_tracts)} census tracts containing '{pattern}' in name")
+                return city_tracts
     
-    # Filter tracts that mention the city name in their NAME field
-    city_tracts = census_df[census_df['NAME'].str.lower().str.contains(city_name, na=False)]
+    # Method 2: If no county match, filter by geographic proximity (rough approximation)
+    # Create a buffer around the city to catch nearby tracts
+    buffer_size = 0.1  # degrees (roughly 11km)
+    extended_bounds = (minx - buffer_size, miny - buffer_size, 
+                      maxx + buffer_size, maxy + buffer_size)
     
-    if len(city_tracts) > 0:
-        print(f"Found {len(city_tracts)} census tracts containing '{city_name}' in name")
-        return city_tracts
+    # This is a very rough approximation since we don't have tract coordinates
+    # We'll just take a reasonable sample of tracts from the state
+    print(f"No tracts found by county name matching city '{city_parts[0]}', using geographic sampling")
     
-    # If no tracts found by name, take a random sample to avoid processing entire state
-    sample_size = min(50, len(census_df))  # Limit to 50 tracts max
-    sampled_tracts = census_df.sample(n=sample_size, random_state=42)
-    print(f"No tracts found by city name, using random sample of {len(sampled_tracts)} tracts")
+    # Take tracts from middle portion of the sorted list (by tract number)
+    # This often corresponds to more central/urban areas
+    census_df_sorted = census_df.sort_values('tract')
+    start_idx = len(census_df_sorted) // 4
+    end_idx = 3 * len(census_df_sorted) // 4
+    sample_size = min(100, end_idx - start_idx)  # Limit to 100 tracts max
+    
+    sampled_tracts = census_df_sorted.iloc[start_idx:start_idx + sample_size]
+    print(f"Using sample of {len(sampled_tracts)} tracts from central portion of state")
     return sampled_tracts
 
 def process_census_data_to_geodataframe(city_gdf, census_df):
@@ -174,60 +239,22 @@ def process_census_data_to_geodataframe(city_gdf, census_df):
         print(f"Error processing census data: {e}")
         return generate_synthetic_population_data(city_gdf)
 
-def generate_synthetic_population_data(city_gdf, census_df=None):
-    """Generate synthetic population density data for demonstration"""
-    # Get city boundary
-    city_geom = city_gdf.iloc[0].geometry
-    
-    # Create a grid of points across the city
-    minx, miny, maxx, maxy = city_geom.bounds
-    x_coords = np.linspace(minx, maxx, 20)
-    y_coords = np.linspace(miny, maxy, 20)
-    
-    points = []
-    population = []
-    
-    # If we have census data, use it to inform our synthetic generation
-    if census_df is not None:
-        # Calculate average population from census data
-        census_df['population'] = pd.to_numeric(census_df['B01003_001E'], errors='coerce').fillna(0)
-        avg_pop = census_df['population'].mean()
-        std_pop = census_df['population'].std()
-        print(f"Using census statistics: avg={avg_pop:.0f}, std={std_pop:.0f}")
-    else:
-        avg_pop = 5000
-        std_pop = 1000
-    
-    for x in x_coords:
-        for y in y_coords:
-            point = Point(x, y)
-            if point.within(city_geom):
-                points.append(point)
-                # Generate population that's higher in the center, lower at edges
-                dist_to_center = point.distance(Point((minx + maxx) / 2, (miny + maxy) / 2))
-                max_dist = point.distance(Point(minx, miny))
-                
-                # Use census-informed population generation
-                center_weight = (1 - dist_to_center / max_dist)
-                pop = int(np.random.normal(avg_pop * center_weight, std_pop))
-                population.append(max(100, pop))  # Ensure minimum population
-    
-    # Create GeoDataFrame
-    pop_gdf = gpd.GeoDataFrame({
-        'geometry': points,
-        'population': population
-    }, crs='EPSG:4326')
-    
-    total_pop = sum(population)
-    data_source = "census-informed synthetic" if census_df is not None else "synthetic"
-    print(f"Generated {data_source} population data with {len(pop_gdf)} points, total population: {total_pop:,}")
-    return pop_gdf
-
 def get_existing_charging_stations(city_gdf):
-    """Get existing EV charging stations from the NREL API"""
+    """Get existing EV charging stations from the NREL API for the specific city"""
     try:
-        # Get the bounding box for the API request
-        minx, miny, maxx, maxy = city_gdf.iloc[0].geometry.bounds
+        # Get the city geometry and its bounds
+        city_geom = city_gdf.iloc[0].geometry
+        minx, miny, maxx, maxy = city_geom.bounds
+        
+        print(f"City bounds: {minx:.6f}, {miny:.6f}, {maxx:.6f}, {maxy:.6f}")
+        
+        # Check if bounds are reasonable (not too large)
+        lat_span = maxy - miny
+        lon_span = maxx - minx
+        
+        if lat_span > 5 or lon_span > 5:  # If city spans more than 5 degrees, something's wrong
+            print(f"Warning: City bounds seem too large (lat span: {lat_span:.2f}, lon span: {lon_span:.2f})")
+            print("This might result in getting data for a very large area")
         
         # NREL Alternative Fuel Stations API
         url = "https://developer.nrel.gov/api/alt-fuel-stations/v1.json"
@@ -244,7 +271,7 @@ def get_existing_charging_stations(city_gdf):
         
         if 'fuel_stations' in data:
             stations = data['fuel_stations']
-            print(f"Retrieved {len(stations)} existing charging stations from NREL API")
+            print(f"Retrieved {len(stations)} charging stations from NREL API within bounding box")
             
             # Convert to GeoDataFrame
             if stations:
@@ -256,7 +283,25 @@ def get_existing_charging_stations(city_gdf):
                     'ev_level': [(s.get('ev_level2_evse_num') or 0) + (s.get('ev_dc_fast_num') or 0) for s in stations]
                 }, crs='EPSG:4326')
                 
-                return station_gdf
+                # Filter stations to only those actually within the city boundary
+                stations_in_city = station_gdf[station_gdf.geometry.within(city_geom)]
+                
+                print(f"Filtered to {len(stations_in_city)} stations actually within city boundary")
+                
+                # If no stations within exact boundary, use stations within a reasonable buffer
+                if len(stations_in_city) == 0:
+                    # Create a small buffer around the city (about 1km)
+                    city_buffered = city_geom.buffer(0.01)  # roughly 1km buffer
+                    stations_near_city = station_gdf[station_gdf.geometry.within(city_buffered)]
+                    
+                    if len(stations_near_city) > 0:
+                        print(f"Using {len(stations_near_city)} stations within buffer of city")
+                        return stations_near_city
+                    else:
+                        print("No stations found within city or nearby buffer")
+                        return gpd.GeoDataFrame(geometry=[], crs='EPSG:4326')
+                
+                return stations_in_city
             else:
                 print("No existing stations found in the area")
                 return gpd.GeoDataFrame(geometry=[], crs='EPSG:4326')
@@ -269,44 +314,34 @@ def get_existing_charging_stations(city_gdf):
         # Generate a few synthetic stations for demonstration
         return generate_synthetic_charging_stations(city_gdf)
 
-def generate_synthetic_charging_stations(city_gdf):
-    """Generate synthetic charging station data for demonstration"""
-    # Get city boundary
-    city_geom = city_gdf.iloc[0].geometry
+def validate_city_geometry(city_gdf):
+    """Validate that the city geometry is reasonable"""
+    if len(city_gdf) == 0:
+        print("Warning: Empty city GeoDataFrame")
+        return False
     
-    # Create some random points within the city
+    city_geom = city_gdf.iloc[0].geometry
     minx, miny, maxx, maxy = city_geom.bounds
     
-    points = []
-    names = []
-    addresses = []
-    levels = []
+    # Check if coordinates are in a reasonable range for US cities
+    if not (-180 <= minx <= 180 and -180 <= maxx <= 180):
+        print(f"Warning: Longitude values seem out of range: {minx}, {maxx}")
+        return False
     
-    # Generate 10-20 random stations
-    num_stations = np.random.randint(10, 21)
+    if not (-90 <= miny <= 90 and -90 <= maxy <= 90):
+        print(f"Warning: Latitude values seem out of range: {miny}, {maxy}")
+        return False
     
-    for i in range(num_stations):
-        while True:
-            x = np.random.uniform(minx, maxx)
-            y = np.random.uniform(miny, maxy)
-            point = Point(x, y)
-            if point.within(city_geom):
-                points.append(point)
-                names.append(f"Charging Station {i+1}")
-                addresses.append(f"{np.random.randint(100, 9999)} Example St")
-                levels.append(np.random.randint(1, 5))
-                break
+    # Check if the city area is reasonable (not too large)
+    lat_span = maxy - miny
+    lon_span = maxx - minx
     
-    # Create GeoDataFrame
-    stations_gdf = gpd.GeoDataFrame({
-        'geometry': points,
-        'name': names,
-        'address': addresses,
-        'ev_level': levels
-    }, crs='EPSG:4326')
+    if lat_span > 2 or lon_span > 2:  # Cities shouldn't span more than 2 degrees
+        print(f"Warning: City seems very large - lat span: {lat_span:.3f}°, lon span: {lon_span:.3f}°")
+        return False
     
-    print(f"Generated {len(stations_gdf)} synthetic charging stations")
-    return stations_gdf
+    print(f"City geometry validated - bounds: {minx:.6f}, {miny:.6f}, {maxx:.6f}, {maxy:.6f}")
+    return True
 
 def get_candidate_locations(road_nodes, existing_stations, city_gdf, num_candidates=NUM_CANDIDATE_LOCATIONS):
     """Generate candidate locations for new charging stations"""
