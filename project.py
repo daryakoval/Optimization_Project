@@ -12,7 +12,7 @@ Data Sources:
 - OpenChargeMap API: Current charging infrastructure
 
 """
-from constants import CITY, MAX_BUDGET, STATION_COST
+from constants import CITY, MAX_BUDGET, BASE_STATION_COST
 from data_collection import get_candidate_locations, get_city_boundary, get_existing_charging_stations, get_population_data, get_road_network
 from data_prep import prepare_coverage_matrix
 from milp import optimize_charging_station_locations
@@ -41,7 +41,7 @@ def main():
     # Step 4: MILP Formulation and Solution
     print("\n=== RUNNING OPTIMIZATION ===")
     selected_locations_gdf, covered_population, total_population = optimize_charging_station_locations(
-        coverage_df, candidate_locations_gdf, MAX_BUDGET, STATION_COST
+        coverage_df, candidate_locations_gdf, MAX_BUDGET, BASE_STATION_COST
     )
     
     # Step 5: Visualization
@@ -52,7 +52,7 @@ def main():
     print("\n=== OPTIMIZATION COMPLETE ===")
     print(f"Results: Selected {len(selected_locations_gdf)} new charging station locations")
     print(f"Population coverage: {covered_population:.0f} out of {total_population:.0f} ({covered_population/total_population*100:.2f}%)")
-    print(f"Total cost: ${len(selected_locations_gdf) * STATION_COST:,}")
+    print(f"Total cost: ${len(selected_locations_gdf) * BASE_STATION_COST:,}")
     
     return {
         'city_gdf': city_gdf,

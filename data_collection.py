@@ -47,73 +47,6 @@ def get_road_network(city_gdf):
         print(f"Retrieved {len(nodes)} road network nodes and {len(edges)} edges")
         return nodes, edges
 
-def get_land_areas(city_gdf):
-    """Get land areas (excluding water bodies) using OSMnx"""
-    try:
-        city_geom = city_gdf.iloc[0].geometry
-        
-        # Try different methods based on OSMnx version
-        water_gdf = None
-        
-        # Method 1: Try newer API first
-        if hasattr(ox, 'geometries_from_polygon'):
-            try:
-                tags = {'natural': ['water', 'bay'], 
-                        'waterway': True, 
-                        'landuse': ['reservoir', 'basin']}
-                water_gdf = ox.geometries_from_polygon(city_geom, tags=tags)
-                print(f"Found {len(water_gdf)} water features using geometries_from_polygon")
-            except Exception as e:
-                print(f"geometries_from_polygon failed: {e}")
-        
-        # Method 2: Try older API
-        if water_gdf is None and hasattr(ox, 'footprints_from_polygon'):
-            try:
-                # Try getting water features using older API
-                water_gdf = ox.footprints_from_polygon(city_geom, footprint_type='water')
-                print(f"Found {len(water_gdf)} water features using footprints_from_polygon")
-            except Exception as e:
-                print(f"footprints_from_polygon failed: {e}")
-        
-        # Method 3: Use pois_from_polygon for water features
-        if water_gdf is None:
-            try:
-                # Get water-related POIs and natural features
-                amenities = {'natural': ['water', 'bay', 'lake'], 
-                           'waterway': ['river', 'stream', 'canal'],
-                           'landuse': ['reservoir', 'basin']}
-                water_gdf = ox.pois_from_polygon(city_geom, amenities=amenities)
-                if len(water_gdf) > 0:
-                    print(f"Found {len(water_gdf)} water features using pois_from_polygon")
-                else:
-                    water_gdf = None
-            except Exception as e:
-                print(f"pois_from_polygon failed: {e}")
-                water_gdf = None
-        
-        # Process water features if found
-        if water_gdf is not None and len(water_gdf) > 0:
-            # Convert to the same CRS as city
-            water_gdf = water_gdf.to_crs(city_gdf.crs)
-            
-            # Create a unified water geometry
-            water_union = water_gdf.geometry.unary_union
-            # Create land area by subtracting water from city boundary
-            land_geom = city_geom.difference(water_union)
-            
-            # Create GeoDataFrame for land areas
-            land_gdf = gpd.GeoDataFrame({'geometry': [land_geom]}, crs=city_gdf.crs)
-            print("Successfully created land areas excluding water bodies")
-            return land_gdf
-        else:
-            print("No water features found or could not retrieve them, using full city boundary")
-            return city_gdf
-            
-    except Exception as e:
-        print(f"Error getting land areas: {e}")
-        print("Using full city boundary as fallback")
-        return city_gdf
-
 def get_population_data(city_gdf):
     """Get population density data from US Census API"""
     if not CENSUS_API_KEY:
@@ -249,90 +182,11 @@ def filter_census_data_by_city(census_df, city_gdf):
 
 def process_census_data_to_geodataframe(city_gdf, census_df):
     """Process census tract data into a GeoDataFrame with population points (excluding water areas)"""
-    try:
-        # Clean and prepare census data
-        census_df['population'] = pd.to_numeric(census_df['B01003_001E'], errors='coerce').fillna(0)
-        census_df = census_df[census_df['population'] > 0]  # Remove tracts with no population
-        
-        # Try to get land areas (excluding water bodies)
-        land_gdf = get_land_areas(city_gdf)
-        
-        # Check if we successfully got land areas different from city boundary
-        city_geom = city_gdf.iloc[0].geometry
-        land_geom = land_gdf.iloc[0].geometry
-        
-        # If land areas are the same as city (no water exclusion worked), 
-        # use road network approach instead
-        if land_geom.equals(city_geom):
-            print("No water exclusion available, using road network approach to avoid water")
-            total_population = census_df['population'].sum()
-            return generate_population_from_road_network(city_gdf, total_population)
-        
-        # For demonstration, we'll create points distributed based on census tract populations
-        # In a real implementation, you'd need census tract shapefiles to get exact boundaries
-        points = []
-        populations = []
-        
-        # Calculate total population for weighting
-        total_population = census_df['population'].sum()
-        
-        # Create points distributed across the land areas, weighted by population density
-        for _, tract in census_df.iterrows():
-            tract_pop = tract['population']
-            
-            # Number of points for this tract based on its population proportion
-            num_points = max(1, int((tract_pop / total_population) * 100))  # Scale to reasonable number of points
-            
-            # Generate random points within land areas (not water) for this tract
-            for _ in range(num_points):
-                # Generate random point within land areas only
-                attempts = 0
-                max_attempts = 100  # Increase max attempts for better coverage
-                
-                while attempts < max_attempts:
-                    # Try different strategies based on geometry type
-                    if hasattr(land_geom, 'geoms'):  # MultiPolygon
-                        # Choose a random polygon from the multipolygon
-                        polygons = list(land_geom.geoms)
-                        chosen_polygon = np.random.choice(polygons)
-                        bounds = chosen_polygon.bounds
-                    else:  # Single Polygon
-                        chosen_polygon = land_geom
-                        bounds = land_geom.bounds
-                    
-                    minx, miny, maxx, maxy = bounds
-                    x = np.random.uniform(minx, maxx)
-                    y = np.random.uniform(miny, maxy)
-                    point = Point(x, y)
-                    
-                    # Check if point is within land areas (not water)
-                    if point.within(chosen_polygon):
-                        points.append(point)
-                        # Distribute population among points for this tract
-                        populations.append(int(tract_pop / num_points))
-                        break
-                    attempts += 1
-                
-                # If we couldn't find a valid point after many attempts, skip this point
-                if attempts >= max_attempts:
-                    continue
-        
-        if not points:
-            print("No valid points generated from census data. Using road network for population distribution.")
-            return generate_population_from_road_network(city_gdf, total_population)
-        
-        # Create GeoDataFrame
-        pop_gdf = gpd.GeoDataFrame({
-            'geometry': points,
-            'population': populations
-        }, crs='EPSG:4326')
-        
-        print(f"Generated population data from census with {len(pop_gdf)} points on land areas only, total population: {sum(populations):,}")
-        return pop_gdf
-        
-    except Exception as e:
-        print(f"Error processing census data: {e}")
-        return generate_synthetic_population_data(city_gdf)
+    # Clean and prepare census data
+    census_df['population'] = pd.to_numeric(census_df['B01003_001E'], errors='coerce').fillna(0)
+    census_df = census_df[census_df['population'] > 0]  # Remove tracts with no population
+    total_population = census_df['population'].sum()
+    return generate_population_from_road_network(city_gdf, total_population)
 
 def generate_population_from_road_network(city_gdf, total_population):
     """Fallback method: Generate population points based on road network density"""
@@ -468,29 +322,42 @@ def validate_city_geometry(city_gdf):
 def get_candidate_locations(road_nodes, existing_stations, city_gdf, num_candidates=NUM_CANDIDATE_LOCATIONS):
     """Generate candidate locations for new charging stations"""
     # Try to get land areas to avoid water bodies
-    land_gdf = get_land_areas(city_gdf)
     city_geom = city_gdf.iloc[0].geometry
-    land_geom = land_gdf.iloc[0].geometry
-    
-    # If we successfully excluded water areas, use land geometry
-    if not land_geom.equals(city_geom):
-        # Filter nodes to those within the land areas (not water)
-        nodes_filtered = road_nodes[road_nodes.within(land_geom)]
-        print(f"Filtered road nodes to land areas: {len(nodes_filtered)} nodes")
-    else:
-        # If no water exclusion worked, just use nodes within city
-        # Road networks inherently avoid water, so this is still better than random points
-        nodes_filtered = road_nodes[road_nodes.within(city_geom)]
-        print(f"Using all road nodes within city: {len(nodes_filtered)} nodes")
+
+    # Road networks inherently avoid water, so this is still better than random points
+    nodes_filtered = road_nodes[road_nodes.within(city_geom)]
+    print(f"Using all road nodes within city: {len(nodes_filtered)} nodes")
     
     # Create a GeoDataFrame of existing stations for spatial operations
     if len(existing_stations) > 0:
-        # Buffer existing stations by MIN_DISTANCE_BETWEEN_STATIONS
-        buffered_stations = existing_stations.copy()
-        buffered_stations['geometry'] = buffered_stations.geometry.buffer(MIN_DISTANCE_BETWEEN_STATIONS / 111000)  # Rough conversion from meters to degrees
+        # Convert to projected CRS for accurate distance calculations
+        # Use UTM zone appropriate for the location (rough approximation)
+        city_center = city_geom.centroid
+        utm_crs = f"EPSG:{32600 + int((city_center.x + 180) / 6) + 1}"  # Rough UTM zone calculation
         
-        # Filter out nodes that are too close to existing stations
-        candidate_nodes = nodes_filtered[~nodes_filtered.intersects(buffered_stations.unary_union)]
+        try:
+            # Project to UTM for accurate distance calculation
+            existing_proj = existing_stations.to_crs(utm_crs)
+            nodes_proj = nodes_filtered.to_crs(utm_crs)
+            
+            # Buffer existing stations by MIN_DISTANCE_BETWEEN_STATIONS (in meters)
+            buffered_stations = existing_proj.copy()
+            buffered_stations['geometry'] = buffered_stations.geometry.buffer(MIN_DISTANCE_BETWEEN_STATIONS)
+            
+            # Filter out nodes that are too close to existing stations
+            candidate_nodes = nodes_proj[~nodes_proj.intersects(buffered_stations.unary_union)]
+            
+            # Convert back to original CRS
+            candidate_nodes = candidate_nodes.to_crs(nodes_filtered.crs)
+            
+        except Exception as e:
+            print(f"Error with CRS transformation, using degree-based approximation: {e}")
+            # Fallback to degree-based buffer (less accurate)
+            buffered_stations = existing_stations.copy()
+            buffered_stations['geometry'] = buffered_stations.geometry.buffer(MIN_DISTANCE_BETWEEN_STATIONS / 111000)  # Rough conversion from meters to degrees
+            
+            # Filter out nodes that are too close to existing stations
+            candidate_nodes = nodes_filtered[~nodes_filtered.intersects(buffered_stations.unary_union)]
     else:
         candidate_nodes = nodes_filtered
     
@@ -499,6 +366,7 @@ def get_candidate_locations(road_nodes, existing_stations, city_gdf, num_candida
         candidate_nodes = candidate_nodes.sample(num_candidates)
     
     # Add an ID field
+    candidate_nodes = candidate_nodes.reset_index(drop=True)
     candidate_nodes['location_id'] = [f"L{i+1}" for i in range(len(candidate_nodes))]
     
     print(f"Generated {len(candidate_nodes)} candidate locations avoiding water areas")

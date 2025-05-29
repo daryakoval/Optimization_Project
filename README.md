@@ -24,7 +24,7 @@ You can modify these parameters in the code:
 
 * `CITY`: The city to analyze
 * `MAX_BUDGET`: Maximum budget for new stations
-* `STATION_COST`: Cost per station
+* `BASE_STATION_COST`: Cost per station
 * `MAX_COVERAGE_DISTANCE`: Maximum distance in meters for a station to cover a population point
 * `MIN_DISTANCE_BETWEEN_STATIONS`: Minimum distance between any two stations
 * `NUM_CANDIDATE_LOCATIONS`: Number of candidate locations to consider
@@ -73,7 +73,7 @@ We can't spend more than our maximum budget:
 
 Where:
 * L is the set of all candidate locations
-* cost_j is the cost of placing a station at location j (constant STATION_COST in our code)
+* cost_j is the cost of placing a station at location j (cost_j is the cost of placing a station at location j (each station location has a different cost ranging from 80% to 150% of the BASE_STATION_COST in our code))
 * x_j is the binary decision variable for location j
 
 #### 2. Coverage Constraint

@@ -9,7 +9,7 @@ CITY = "Seattle, WA, USA"
 
 # Budget constraint ($)
 MAX_BUDGET = 1000000  # $1M budget for new stations
-STATION_COST = 100000  # Cost per station
+BASE_STATION_COST = 100000  # Cost per station
 
 # Coverage parameters
 MAX_COVERAGE_DISTANCE = 1000  # meters
