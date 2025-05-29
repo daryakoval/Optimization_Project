@@ -3,9 +3,10 @@ from dotenv import load_dotenv
 # Load environment variables (for API keys)
 load_dotenv()
 
+SEED = 15   # good for seatle - 15, portland - 35, austin - 47
 # Define a sample city to analyze
 CITY = "Seattle, WA, USA"
-# Alternative cities to try: "Portland, OR, USA", "San Francisco, CA, USA", "Austin, TX, USA"
+# Alternative cities to try: "Seattle, WA, USA", "Portland, OR, USA", "San Francisco, CA, USA", "Austin, TX, USA"
 
 # Budget constraint ($)
 MAX_BUDGET = 1000000  # $1M budget for new stations

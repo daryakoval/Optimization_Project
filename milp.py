@@ -1,6 +1,8 @@
 from pulp import *
 import random
 
+from constants import SEED
+
 
 # =============================================================================
 # STEP 3: MILP FORMULATION AND SOLUTION
@@ -20,7 +22,7 @@ def optimize_charging_station_locations(coverage_df, candidate_locations, max_bu
     # =============================================================================
     
     # Variable station costs (based on location characteristics)
-    random.seed(42)  # For reproducible results
+    random.seed(SEED)  # For reproducible results
     station_costs = {}
     for loc in locations:
         # Vary costs between 80% to 150% of base cost

@@ -1,0 +1,6 @@
+- Run the result 
+- Explain the results (all the prints of milp)
+- create presentations
+- add results to presentation
+- practice the prezentation
+- remove comments?

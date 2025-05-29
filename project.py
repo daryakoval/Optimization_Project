@@ -12,12 +12,17 @@ Data Sources:
 - OpenChargeMap API: Current charging infrastructure
 
 """
-from constants import CITY, MAX_BUDGET, BASE_STATION_COST
+import random
+
+import numpy as np
+from constants import CITY, MAX_BUDGET, BASE_STATION_COST, SEED
 from data_collection import get_candidate_locations, get_city_boundary, get_existing_charging_stations, get_population_data, get_road_network
 from data_prep import prepare_coverage_matrix
 from milp import optimize_charging_station_locations
 from vizualization import create_interactive_map, visualize_results
 
+random.seed(SEED)
+np.random.seed(SEED)
 
 def main():
     """Main execution function"""
