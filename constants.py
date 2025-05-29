@@ -19,7 +19,7 @@ MIN_DISTANCE_BETWEEN_STATIONS = 500  # meters
 NUM_CANDIDATE_LOCATIONS = 50
 
 # NREL API key - Get from https://developer.nrel.gov/signup/
-NREL_API_KEY = os.getenv("NREL_API_KEY", "DEMO_KEY")
+NREL_API_KEY = os.getenv("NREL_API_KEY", "g9a48djfLHVAyaM0dpcAHa7ocScZTfWnZUOrbCgf")
 
 # Census API key - Get from https://api.census.gov/data/key_signup.html
-CENSUS_API_KEY = os.getenv("CENSUS_API_KEY", "")
+CENSUS_API_KEY = os.getenv("CENSUS_API_KEY", "e370861af9700b96c64c482d989b412332513405")
