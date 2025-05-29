@@ -9,7 +9,8 @@ from constants import MAX_COVERAGE_DISTANCE
 
 
 def prepare_coverage_matrix(population_points, candidate_locations):
-    """Create a coverage matrix showing which populations are covered by which candidate locations"""
+    """Create a coverage matrix showing which populations are covered by which candidate locations -
+    which charging stations would be useful to which groups of people"""
     # Convert population points and candidate locations to the same CRS if needed
     if population_points.crs != candidate_locations.crs:
         population_points = population_points.to_crs(candidate_locations.crs)
