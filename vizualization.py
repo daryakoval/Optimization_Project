@@ -3,41 +3,55 @@ import matplotlib.pyplot as plt
 import folium
 from pulp import *
 import contextily as ctx
-
+from pyproj import CRS
 from constants import CITY, MAX_COVERAGE_DISTANCE
-
 
 def visualize_results(city_gdf, population_gdf, existing_stations_gdf, candidate_locations_gdf, selected_locations_gdf):
     """Visualize the results using GeoPandas and Matplotlib"""
+
+    # Check if CRS is geographic (degrees), convert to projected (meters) if needed
+    if selected_locations_gdf.crs.is_geographic:
+        projected_crs = CRS.from_epsg(3857)  # Web Mercator, good general-purpose projected CRS
+        city_gdf = city_gdf.to_crs(projected_crs)
+        population_gdf = population_gdf.to_crs(projected_crs)
+        existing_stations_gdf = existing_stations_gdf.to_crs(projected_crs)
+        candidate_locations_gdf = candidate_locations_gdf.to_crs(projected_crs)
+        selected_locations_gdf = selected_locations_gdf.to_crs(projected_crs)
+
     # Set up the figure
     fig, ax = plt.subplots(figsize=(15, 15))
-    
+
     # Plot city boundary
     city_gdf.plot(ax=ax, alpha=0.3, color='lightgray', edgecolor='black')
-    
+
     # Plot population density (sized by population)
-    population_gdf.plot(ax=ax, alpha=0.5, color='blue', markersize=population_gdf['population']/500, label='Population')
-    
+    population_gdf.plot(ax=ax, alpha=0.5, color='blue', markersize=population_gdf['population'] / 500, label='Population')
+
     # Plot existing stations
     if len(existing_stations_gdf) > 0:
         existing_stations_gdf.plot(ax=ax, color='green', markersize=50, marker='^', label='Existing Stations')
-    
+
     # Plot candidate locations
     candidate_locations_gdf.plot(ax=ax, color='gray', markersize=30, marker='o', label='Candidate Locations')
-    
+
     # Plot selected locations
     selected_locations_gdf.plot(ax=ax, color='red', markersize=80, marker='*', label='Selected New Stations')
-    
+
+    # Add red buffer circles (MAX_COVERAGE_DISTANCE radius)
+    reachable_area = selected_locations_gdf.copy()
+    reachable_area['geometry'] = reachable_area.buffer(MAX_COVERAGE_DISTANCE)
+    reachable_area.plot(ax=ax, facecolor='none', edgecolor='red', linewidth=1.5, linestyle='--', label='1000m Reachable Area')
+
     # Add labels and legend
     plt.title(f'EV Charging Station Optimization for {CITY}', fontsize=16)
     plt.legend(fontsize=12)
-    
+
     # Add background map
     try:
         ctx.add_basemap(ax, crs=city_gdf.crs.to_string())
     except Exception as e:
         print(f"Couldn't add basemap: {e}")
-    
+
     plt.tight_layout()
     plt.savefig('ev_charging_optimization_results.png', dpi=300)
     plt.show()
