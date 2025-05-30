@@ -46,7 +46,7 @@ def main():
     # Step 4: MILP Formulation and Solution
     print("\n=== RUNNING OPTIMIZATION ===")
     selected_locations_gdf, covered_population, total_population = optimize_charging_station_locations(
-        coverage_df, candidate_locations_gdf, MAX_BUDGET, BASE_STATION_COST
+        coverage_df, candidate_locations_gdf, MAX_BUDGET, BASE_STATION_COST, population_gdf
     )
     
     # Step 5: Visualization

@@ -8,7 +8,7 @@ import osmnx as ox
 import census
 
 
-from constants import CENSUS_API_KEY, CITY, MIN_DISTANCE_BETWEEN_STATIONS, NREL_API_KEY, NUM_CANDIDATE_LOCATIONS
+from constants import CENSUS_API_KEY, CITY, MIN_DISTANCE_BETWEEN_STATIONS, NREL_API_KEY, NUM_CANDIDATE_LOCATIONS, POPULATION_POINTS
 from fallback import generate_synthetic_population_data, generate_synthetic_charging_stations
 
 # =============================================================================
@@ -97,8 +97,8 @@ def get_population_data(city_gdf):
                 tract='*',
                 year=2019
             )
-            # Take only first 200 tracts to avoid processing entire state
-            census_data = census_data[:200]
+            # Take only first POPULATION_POINTS tracts to avoid processing entire state
+            census_data = census_data[:POPULATION_POINTS]
         
         # Convert to DataFrame
         census_df = pd.DataFrame(census_data)
@@ -197,7 +197,8 @@ def generate_population_from_road_network(city_gdf, total_population):
         nodes, edges = ox.graph_to_gdfs(G)
         
         # Sample nodes for population points
-        num_points = min(200, len(nodes))  # Reasonable number of points
+        print(f"*******************************{len(nodes)=}************************")
+        num_points = min(POPULATION_POINTS, len(nodes))  # Reasonable number of points
         sampled_nodes = nodes.sample(num_points)
         
         # Distribute population among the points
