@@ -45,7 +45,7 @@ def main():
     
     # Step 4: MILP Formulation and Solution
     print("\n=== RUNNING OPTIMIZATION ===")
-    selected_locations_gdf, covered_population, total_population = optimize_charging_station_locations(
+    selected_locations_gdf, covered_population, total_population, actual_total_cost = optimize_charging_station_locations(
         coverage_df, candidate_locations_gdf, MAX_BUDGET, BASE_STATION_COST, population_gdf
     )
     
@@ -57,7 +57,7 @@ def main():
     print("\n=== OPTIMIZATION COMPLETE ===")
     print(f"Results: Selected {len(selected_locations_gdf)} new charging station locations")
     print(f"Population coverage: {covered_population:.0f} out of {total_population:.0f} ({covered_population/total_population*100:.2f}%)")
-    print(f"Total cost: ${len(selected_locations_gdf) * BASE_STATION_COST:,}")
+    print(f"Total cost: ${actual_total_cost:,}")  # Now uses actual variable costs
     
     return {
         'city_gdf': city_gdf,
@@ -67,7 +67,8 @@ def main():
         'selected_locations_gdf': selected_locations_gdf,
         'covered_population': covered_population,
         'total_population': total_population,
-        'coverage_percentage': covered_population/total_population*100
+        'coverage_percentage': covered_population/total_population*100,
+        'actual_total_cost': actual_total_cost
     }
 
 if __name__ == "__main__":

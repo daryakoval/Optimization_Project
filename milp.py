@@ -85,7 +85,7 @@ def optimize_charging_station_locations(coverage_df, candidate_locations, max_bu
     
     if LpStatus[prob.status] != 'Optimal':
         print("WARNING: Optimization did not find optimal solution!")
-        return candidate_locations.iloc[:0], 0, coverage_df['population'].sum()
+        return candidate_locations.iloc[:0], 0, coverage_df['population'].sum(), 0
     
     # =============================================================================
     # EXTRACT AND VALIDATE RESULTS
@@ -116,6 +116,52 @@ def optimize_charging_station_locations(coverage_df, candidate_locations, max_bu
     coverage_percentage = covered_population / total_population * 100
     
     # =============================================================================
+    # DETAILED STATION ANALYSIS
+    # =============================================================================
+    
+    print(f"\n=== DETAILED STATION ANALYSIS ===")
+    for location_id in selected_locations:
+        station_cost_value = station_costs[location_id]
+        
+        # Find which population points this station covers
+        covered_points = []
+        total_pop_covered_by_station = 0
+        
+        for p in population_points:
+            if coverage_df.loc[p, location_id] == 1 and coverage_results[p]:
+                covered_points.append(p)
+                total_pop_covered_by_station += coverage_df.loc[p, 'population']
+        
+        print(f"\nStation {location_id}:")
+        print(f"  Cost: ${station_cost_value:,}")
+        print(f"  Covers {len(covered_points)} population points")
+        print(f"  Total population covered: {total_pop_covered_by_station:,}")
+        print(f"  Population points covered: {covered_points}")
+    
+    # =============================================================================
+    # DETAILED COVERAGE ANALYSIS
+    # =============================================================================
+    
+    print(f"\n=== POPULATION COVERAGE ANALYSIS ===")
+    covered_points_list = []
+    uncovered_points_list = []
+    
+    for p in population_points:
+        pop_size = coverage_df.loc[p, 'population']
+        if coverage_results[p]:
+            covered_points_list.append((p, pop_size))
+        else:
+            uncovered_points_list.append((p, pop_size))
+    
+    # print(f"\nCovered population points ({len(covered_points_list)}):")
+    # for point_id, pop_size in sorted(covered_points_list, key=lambda x: x[1], reverse=True):  # Sort by population size
+    #     print(f"  Point {point_id}: {pop_size:,} people")
+    
+    # print(f"\nUncovered population points ({len(uncovered_points_list)}):")
+    # for point_id, pop_size in sorted(uncovered_points_list, key=lambda x: x[1], reverse=True):  # Sort by population size
+    #     print(f"  Point {point_id}: {pop_size:,} people")
+    
+    # =============================================================================
     # CREATE DETAILED COVERAGE MAPPING
     # =============================================================================
     
@@ -142,10 +188,13 @@ def optimize_charging_station_locations(coverage_df, candidate_locations, max_bu
     if abs(manual_coverage['coverage_percentage'] - coverage_percentage) > 0.1:
         print("WARNING: Coverage calculation mismatch detected!")
     
-    # Get the GeoDataFrame of selected locations
+    # Get the GeoDataFrame of selected locations and add cost information
     selected_gdf = candidate_locations[candidate_locations['location_id'].isin(selected_locations)].copy()
     
-    return selected_gdf, covered_population, total_population
+    # Add cost information to the GeoDataFrame
+    selected_gdf['station_cost'] = selected_gdf['location_id'].map(station_costs)
+    
+    return selected_gdf, covered_population, total_population, total_cost
 
 
 def create_population_coverage_mapping(coverage_df, selected_locations, population_gdf):

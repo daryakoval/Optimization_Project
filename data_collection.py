@@ -197,7 +197,6 @@ def generate_population_from_road_network(city_gdf, total_population):
         nodes, edges = ox.graph_to_gdfs(G)
         
         # Sample nodes for population points
-        print(f"*******************************{len(nodes)=}************************")
         num_points = min(POPULATION_POINTS, len(nodes))  # Reasonable number of points
         sampled_nodes = nodes.sample(num_points)
         

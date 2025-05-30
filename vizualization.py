@@ -4,12 +4,13 @@ from pulp import *
 import contextily as ctx
 from pyproj import CRS
 import numpy as np
+import math
 from constants import CITY, MAX_COVERAGE_DISTANCE
 
 def visualize_results(city_gdf, population_gdf, existing_stations_gdf, candidate_locations_gdf, selected_locations_gdf):
     """Visualize the results using GeoPandas and Matplotlib
     
-    FIXED VERSION: Properly shows covered vs uncovered population points
+    FIXED VERSION: Properly shows covered vs uncovered population points with size-based markers and cost-based station colors
     """
     print("Creating visualization with accurate coverage display...")
     
@@ -31,25 +32,39 @@ def visualize_results(city_gdf, population_gdf, existing_stations_gdf, candidate
     # Plot city boundary
     city_gdf.plot(ax=ax, alpha=0.3, color='lightgray', edgecolor='black')
 
-    # FIXED: Plot population density with proper covered/uncovered distinction
+    # FIXED: Plot population density with proper covered/uncovered distinction and population-based sizing
     if 'covered' in population_gdf.columns:
+        # Calculate marker sizes based on population (scale them appropriately)
+        min_pop = population_gdf['population'].min()
+        max_pop = population_gdf['population'].max()
+        
+        # Scale marker sizes between 10 and 200
+        def scale_marker_size(population):
+            if max_pop == min_pop:
+                return 50  # Default size if all populations are the same
+            normalized = (population - min_pop) / (max_pop - min_pop)
+            return 10 + normalized * 190  # Scale between 10 and 200
+        
         # Plot covered population in blue
         covered_pop = population_gdf[population_gdf['covered'] == True]
         if len(covered_pop) > 0:
+            marker_sizes_covered = [scale_marker_size(pop) for pop in covered_pop['population']]
             covered_pop.plot(ax=ax, alpha=0.7, color='blue', 
-                           markersize=covered_pop['population'] / 500, 
+                           markersize=marker_sizes_covered, 
                            label=f'Covered pop ({len(covered_pop)} points)')
         
         # Plot uncovered population in orange
         uncovered_pop = population_gdf[population_gdf['covered'] == False]
         if len(uncovered_pop) > 0:
+            marker_sizes_uncovered = [scale_marker_size(pop) for pop in uncovered_pop['population']]
             uncovered_pop.plot(ax=ax, alpha=0.7, color='orange', 
-                             markersize=uncovered_pop['population'] / 500, 
+                             markersize=marker_sizes_uncovered, 
                              label=f'Uncovered pop ({len(uncovered_pop)} points)')
     else:
-        # Fallback: plot all population in blue
+        # Fallback: plot all population in blue with size-based markers
+        marker_sizes_all = [scale_marker_size(pop) for pop in population_gdf['population']]
         population_gdf.plot(ax=ax, alpha=0.5, color='blue', 
-                          markersize=population_gdf['population'] / 500, 
+                          markersize=marker_sizes_all, 
                           label='Population')
 
     # Plot existing stations
@@ -61,9 +76,39 @@ def visualize_results(city_gdf, population_gdf, existing_stations_gdf, candidate
     candidate_locations_gdf.plot(ax=ax, color='gray', markersize=20, marker='o', 
                                alpha=0.5, label=f'Candidate Locations ({len(candidate_locations_gdf)})')
 
-    # Plot selected locations (prominent red stars)
-    selected_locations_gdf.plot(ax=ax, color='red', markersize=100, marker='*', 
-                              label=f'Selected New Stations ({len(selected_locations_gdf)})')
+    # Plot selected locations with cost-based coloring (prominent stars)
+    if len(selected_locations_gdf) > 0 and 'station_cost' in selected_locations_gdf.columns:
+        # Determine cost-based colors
+        min_cost = selected_locations_gdf['station_cost'].min()
+        max_cost = selected_locations_gdf['station_cost'].max()
+        
+        # Create color mapping: cheap = light red, expensive = dark red
+        def get_cost_color(cost):
+            if max_cost == min_cost:
+                return 'red'  # Default red if all costs are the same
+            normalized = (cost - min_cost) / (max_cost - min_cost)
+            # Use RGB values: light red (255, 150, 150) to dark red (139, 0, 0)
+            r = int(255 - normalized * (255 - 139))
+            g = int(150 - normalized * 150)
+            b = int(150 - normalized * 150)
+            return f'#{r:02x}{g:02x}{b:02x}'
+        
+        colors = [get_cost_color(cost) for cost in selected_locations_gdf['station_cost']]
+        
+        selected_locations_gdf.plot(ax=ax, color=colors, markersize=100, marker='*', 
+                                  label=f'Selected New Stations ({len(selected_locations_gdf)})')
+        
+        # Add a color legend for costs
+        from matplotlib.patches import Patch
+        legend_elements = [
+            Patch(facecolor='#ffaaaa', label=f'Cheap stations (${min_cost:,})'),
+            Patch(facecolor='#8b0000', label=f'Expensive stations (${max_cost:,})')
+        ]
+        ax.legend(handles=legend_elements, loc='upper left', title='Station Costs')
+    else:
+        # Fallback: plot all selected locations in red
+        selected_locations_gdf.plot(ax=ax, color='red', markersize=100, marker='*', 
+                                  label=f'Selected New Stations ({len(selected_locations_gdf)})')
 
     # Add coverage circles (proper radius in projected coordinates)
     if len(selected_locations_gdf) > 0:
@@ -87,9 +132,11 @@ def visualize_results(city_gdf, population_gdf, existing_stations_gdf, candidate
         ctx.add_basemap(ax, crs=city_gdf.crs.to_string())
     except Exception as e:
         print(f"Couldn't add basemap: {e}")
-
+        
+    city_parts = CITY.split(',')
+    city_name = city_parts[0].strip().lower().replace(" ", "_")
     plt.tight_layout()
-    plt.savefig('ev_charging_optimization_results.png', dpi=300, bbox_inches='tight')
+    plt.savefig(f'ev_charging_optimization_results_{city_name}.png', dpi=300, bbox_inches='tight')
     plt.show()
 
 
@@ -275,14 +322,39 @@ def create_interactive_map(city_gdf, population_gdf, existing_stations_gdf, cand
             ).add_to(candidates)
     candidates.add_to(m)
     
-    # Add selected locations
+    # Add selected locations with cost-based color using CircleMarker
     selected = folium.FeatureGroup(name=f'Selected New Stations ({len(selected_geo)})')
-    for idx, row in selected_geo.iterrows():
-        folium.Marker(
-            location=[row.geometry.y, row.geometry.x],
-            icon=folium.Icon(color='red', icon='bolt', prefix='fa'),
-            popup=f"New Charging Station<br>Location ID: {row['location_id']}"
-        ).add_to(selected)
+
+    if 'station_cost' in selected_geo.columns:
+        min_cost = selected_geo['station_cost'].min()
+        max_cost = selected_geo['station_cost'].max()
+
+        def get_folium_color(cost):
+            if max_cost == min_cost:
+                return 'red'
+            norm = (cost - min_cost) / (max_cost - min_cost)
+            if norm < 0.33:
+                return 'lightred'
+            elif norm < 0.66:
+                return 'red'
+            else:
+                return 'darkred'
+
+        for _, row in selected_geo.iterrows():
+            color = get_folium_color(row['station_cost'])
+            folium.Marker(
+                location=[row.geometry.y, row.geometry.x],
+                icon=folium.Icon(color=color, icon='bolt', prefix='fa'),
+                tooltip=f"Station ID: {row['location_id']}<br>Cost: ${row['station_cost']:,}"
+            ).add_to(selected)
+    else:
+        for _, row in selected_geo.iterrows():
+            folium.Marker(
+                location=[row.geometry.y, row.geometry.x],
+                icon=folium.Icon(color='red', icon='bolt', prefix='fa'),
+                tooltip=f"Station ID: {row['location_id']}"
+            ).add_to(selected)
+
     selected.add_to(m)
     
     # FIXED: Add coverage circles with proper radius calculation
@@ -302,7 +374,7 @@ def create_interactive_map(city_gdf, population_gdf, existing_stations_gdf, cand
         
         folium.Circle(
             location=[row.geometry.y, row.geometry.x],
-            radius=MAX_COVERAGE_DISTANCE-200,  # Folium expects radius in meters
+            radius=MAX_COVERAGE_DISTANCE-300,  # Folium expects radius in meters
             color='red',
             fill=True,
             fill_color='red',
@@ -325,8 +397,10 @@ def create_interactive_map(city_gdf, population_gdf, existing_stations_gdf, cand
     m.get_root().html.add_child(folium.Element(map_title))
     
     # Save the map
-    m.save('ev_charging_optimization_map.html')
-    print("Interactive map saved as 'ev_charging_optimization_map.html'")
+    city_parts = CITY.split(',')
+    city_name = city_parts[0].strip().lower().replace(" ", "_")
+    m.save(f'ev_charging_optimization_map_{city_name}.html')
+    print(f"Interactive map saved as 'ev_charging_optimization_map_{city_name}.html'")
     print(f"Coverage statistics: {coverage_stats['coverage_percentage']:.1f}% of population covered")
     
     return m
