@@ -5,12 +5,12 @@ load_dotenv()
 
 SEED = 17   # good for seatle - 15, portland - 35, austin - 47
 # Define a sample city to analyze
-CITY = "Seattle, WA, USA"
+CITY = "Chicago, IL, USA"
 # Alternative cities to try: "Seattle, WA, USA", "Portland, OR, USA", "San Francisco, CA, USA", "Austin, TX, USA", "Los Angeles, CA, USA", "Chicago, IL, USA"
 
 POPULATION_POINTS = 200
 # Budget constraint ($)
-MAX_BUDGET = 700000  # $1M budget for new stations
+MAX_BUDGET = 1000000  # $1M budget for new stations
 BASE_STATION_COST = 100000  # Cost per station
 
 # Coverage parameters
