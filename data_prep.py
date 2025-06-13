@@ -1,5 +1,5 @@
 # =============================================================================
-# STEP 2: DATA PREPARATION - FIXED VERSION
+# STEP 2: DATA PREPARATION
 # =============================================================================
 
 import pandas as pd
@@ -11,7 +11,6 @@ from constants import MAX_COVERAGE_DISTANCE
 
 
 def prepare_coverage_matrix(population_points, candidate_locations):
-    """QUICK FIX: Use same method as visualization for consistency"""
     print("Preparing coverage matrix with visualization-consistent method...")
     
     # Use Web Mercator (same as visualization)
@@ -30,14 +29,12 @@ def prepare_coverage_matrix(population_points, candidate_locations):
         coverage_column = []
         
         for _, pop_point in pop_projected.iterrows():
-            # SAME calculation as visualization
             distance = pop_point.geometry.distance(candidate.geometry)
             is_covered = 1 if distance <= MAX_COVERAGE_DISTANCE else 0
             coverage_column.append(is_covered)
         
         coverage_data[location_id] = coverage_column
     
-    # Use ORIGINAL indices (not P1, P2, etc.)
     coverage_df = pd.DataFrame(coverage_data, index=pop_projected.index)
     
     print(f"Coverage matrix: {coverage_df.shape} - should now match visualization!")
@@ -67,7 +64,6 @@ def validate_coverage_matrix(coverage_df, population_points, candidate_locations
         print(f"WARNING: {len(no_coverage_points)} population points have no coverage possibilities!")
         print("This means no candidate locations are within MAX_COVERAGE_DISTANCE of these points")
     
-    # Show coverage summary
     avg_coverage_per_point = coverage_df[location_cols].sum(axis=1).mean()
     print(f"Average number of candidate locations that can cover each population point: {avg_coverage_per_point:.1f}")
     

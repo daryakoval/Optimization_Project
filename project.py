@@ -28,28 +28,23 @@ def main():
     """Main execution function"""
     print(f"Starting EV charging station optimization for {CITY}")
     
-    # Step 1: Data Collection
     print("\n=== COLLECTING DATA ===")
     city_gdf = get_city_boundary(CITY)
     road_nodes, road_edges = get_road_network(city_gdf)
     population_gdf = get_population_data(city_gdf)
     existing_stations_gdf = get_existing_charging_stations(city_gdf)
     
-    # Step 2: Generate candidate locations
     print("\n=== GENERATING CANDIDATE LOCATIONS ===")
     candidate_locations_gdf = get_candidate_locations(road_nodes, existing_stations_gdf, city_gdf)
     
-    # Step 3: Data Preparation
     print("\n=== PREPARING DATA FOR OPTIMIZATION ===")
     coverage_df = prepare_coverage_matrix(population_gdf, candidate_locations_gdf)
     
-    # Step 4: MILP Formulation and Solution
     print("\n=== RUNNING OPTIMIZATION ===")
     selected_locations_gdf, covered_population, total_population, actual_total_cost = optimize_charging_station_locations(
         coverage_df, candidate_locations_gdf, MAX_BUDGET, BASE_STATION_COST, population_gdf
     )
     
-    # Step 5: Visualization
     print("\n=== CREATING VISUALIZATIONS ===")
     visualize_results(city_gdf, population_gdf, existing_stations_gdf, candidate_locations_gdf, selected_locations_gdf)
     interactive_map = create_interactive_map(city_gdf, population_gdf, existing_stations_gdf, candidate_locations_gdf, selected_locations_gdf)

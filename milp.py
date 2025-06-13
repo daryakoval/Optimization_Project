@@ -226,7 +226,6 @@ def create_population_coverage_mapping(coverage_df, selected_locations, populati
     
     coverage_df_detailed = pd.DataFrame(coverage_mapping)
     
-    # Summary statistics
     total_covered = coverage_df_detailed['is_covered'].sum()
     total_points = len(coverage_df_detailed)
     covered_pop = coverage_df_detailed[coverage_df_detailed['is_covered']]['population'].sum()

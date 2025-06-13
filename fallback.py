@@ -10,10 +10,8 @@ import census
 
 def generate_synthetic_charging_stations(city_gdf):
     """Generate synthetic charging station data for demonstration"""
-    # Get city boundary
     city_geom = city_gdf.iloc[0].geometry
     
-    # Create some random points within the city
     minx, miny, maxx, maxy = city_geom.bounds
     
     points = []
@@ -21,7 +19,6 @@ def generate_synthetic_charging_stations(city_gdf):
     addresses = []
     levels = []
     
-    # Generate 10-20 random stations
     num_stations = np.random.randint(10, 21)
     
     for i in range(num_stations):
@@ -36,7 +33,6 @@ def generate_synthetic_charging_stations(city_gdf):
                 levels.append(np.random.randint(1, 5))
                 break
     
-    # Create GeoDataFrame
     stations_gdf = gpd.GeoDataFrame({
         'geometry': points,
         'name': names,
@@ -49,10 +45,8 @@ def generate_synthetic_charging_stations(city_gdf):
 
 def generate_synthetic_population_data(city_gdf, census_df=None):
     """Generate synthetic population density data for demonstration"""
-    # Get city boundary
     city_geom = city_gdf.iloc[0].geometry
     
-    # Create a grid of points across the city
     minx, miny, maxx, maxy = city_geom.bounds
     x_coords = np.linspace(minx, maxx, 20)
     y_coords = np.linspace(miny, maxy, 20)
@@ -60,7 +54,6 @@ def generate_synthetic_population_data(city_gdf, census_df=None):
     points = []
     population = []
     
-    # If we have census data, use it to inform our synthetic generation
     if census_df is not None:
         # Calculate average population from census data
         census_df['population'] = pd.to_numeric(census_df['B01003_001E'], errors='coerce').fillna(0)

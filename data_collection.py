@@ -18,7 +18,6 @@ from fallback import generate_synthetic_population_data, generate_synthetic_char
 def get_city_boundary(city_name):
     """Get the boundary of the city using OSMnx"""
     try:
-        # Get the city boundary as a GeoDataFrame
         city_gdf = ox.geocode_to_gdf(city_name)
         return city_gdf
     except Exception as e:
@@ -54,14 +53,11 @@ def get_population_data(city_gdf):
         return generate_synthetic_population_data(city_gdf)
     
     try:
-        # Initialize Census API client
         c = census.Census(CENSUS_API_KEY)
         
-        # Get city boundary for filtering
         city_geom = city_gdf.iloc[0].geometry
         minx, miny, maxx, maxy = city_geom.bounds
         
-        # Get the state code and try to determine county
         state_name = CITY.split(',')[1].strip()
         city_name = CITY.split(',')[0].strip()
         
@@ -100,11 +96,9 @@ def get_population_data(city_gdf):
             # Take only first POPULATION_POINTS tracts to avoid processing entire state
             census_data = census_data[:POPULATION_POINTS]
         
-        # Convert to DataFrame
         census_df = pd.DataFrame(census_data)
         print(f"Retrieved census data for {len(census_df)} tracts")
         
-        # Process the census data to create population points
         return process_census_data_to_geodataframe(city_gdf, census_df)
         
     except Exception as e:
@@ -135,18 +129,14 @@ def get_county_fips_for_city(city_name, state_name, state_fips):
 
 def filter_census_data_by_city(census_df, city_gdf):
     """Filter census data to tracts that are likely within or near the city"""
-    # Get city boundary
     city_geom = city_gdf.iloc[0].geometry
     minx, miny, maxx, maxy = city_geom.bounds
     
     # Method 1: Try to filter by county name if it's in the city string
     city_parts = CITY.split(',')
     if len(city_parts) > 1:
-        # Try to find county name in census tract names
-        # Many cities are named after their county or vice versa
         city_name = city_parts[0].strip().lower()
         
-        # Look for city name or common county variations
         county_patterns = [
             city_name,
             f"{city_name} county",
@@ -182,7 +172,6 @@ def filter_census_data_by_city(census_df, city_gdf):
 
 def process_census_data_to_geodataframe(city_gdf, census_df):
     """Process census tract data into a GeoDataFrame with population points (excluding water areas)"""
-    # Clean and prepare census data
     census_df['population'] = pd.to_numeric(census_df['B01003_001E'], errors='coerce').fillna(0)
     census_df = census_df[census_df['population'] > 0]  # Remove tracts with no population
     total_population = census_df['population'].sum()
@@ -191,16 +180,13 @@ def process_census_data_to_geodataframe(city_gdf, census_df):
 def generate_population_from_road_network(city_gdf, total_population):
     """Fallback method: Generate population points based on road network density"""
     try:
-        # Get road network
         city_geom = city_gdf.iloc[0].geometry
         G = ox.graph_from_polygon(city_geom, network_type='drive')
         nodes, edges = ox.graph_to_gdfs(G)
         
-        # Sample nodes for population points
         num_points = min(POPULATION_POINTS, len(nodes))  # Reasonable number of points
         sampled_nodes = nodes.sample(num_points)
         
-        # Distribute population among the points
         pop_per_point = int(total_population / num_points)
         
         pop_gdf = gpd.GeoDataFrame({
@@ -218,13 +204,11 @@ def generate_population_from_road_network(city_gdf, total_population):
 def get_existing_charging_stations(city_gdf):
     """Get existing EV charging stations from the NREL API for the specific city"""
     try:
-        # Get the city geometry and its bounds
         city_geom = city_gdf.iloc[0].geometry
         minx, miny, maxx, maxy = city_geom.bounds
         
         print(f"City bounds: {minx:.6f}, {miny:.6f}, {maxx:.6f}, {maxy:.6f}")
         
-        # Check if bounds are reasonable (not too large)
         lat_span = maxy - miny
         lon_span = maxx - minx
         
@@ -249,7 +233,6 @@ def get_existing_charging_stations(city_gdf):
             stations = data['fuel_stations']
             print(f"Retrieved {len(stations)} charging stations from NREL API within bounding box")
             
-            # Convert to GeoDataFrame
             if stations:
                 station_points = [Point(s['longitude'], s['latitude']) for s in stations]
                 station_gdf = gpd.GeoDataFrame({
@@ -287,7 +270,6 @@ def get_existing_charging_stations(city_gdf):
             
     except Exception as e:
         print(f"Error getting existing charging stations: {e}")
-        # Generate a few synthetic stations for demonstration
         return generate_synthetic_charging_stations(city_gdf)
 
 def validate_city_geometry(city_gdf):
@@ -299,7 +281,6 @@ def validate_city_geometry(city_gdf):
     city_geom = city_gdf.iloc[0].geometry
     minx, miny, maxx, maxy = city_geom.bounds
     
-    # Check if coordinates are in a reasonable range for US cities
     if not (-180 <= minx <= 180 and -180 <= maxx <= 180):
         print(f"Warning: Longitude values seem out of range: {minx}, {maxx}")
         return False
@@ -308,7 +289,6 @@ def validate_city_geometry(city_gdf):
         print(f"Warning: Latitude values seem out of range: {miny}, {maxy}")
         return False
     
-    # Check if the city area is reasonable (not too large)
     lat_span = maxy - miny
     lon_span = maxx - minx
     
@@ -321,14 +301,11 @@ def validate_city_geometry(city_gdf):
 
 def get_candidate_locations(road_nodes, existing_stations, city_gdf, num_candidates=NUM_CANDIDATE_LOCATIONS):
     """Generate candidate locations for new charging stations"""
-    # Try to get land areas to avoid water bodies
     city_geom = city_gdf.iloc[0].geometry
 
-    # Road networks inherently avoid water, so this is still better than random points
     nodes_filtered = road_nodes[road_nodes.within(city_geom)]
     print(f"Using all road nodes within city: {len(nodes_filtered)} nodes")
     
-    # Create a GeoDataFrame of existing stations for spatial operations
     if len(existing_stations) > 0:
         # Convert to projected CRS for accurate distance calculations
         # Use UTM zone appropriate for the location (rough approximation)
@@ -347,16 +324,13 @@ def get_candidate_locations(road_nodes, existing_stations, city_gdf, num_candida
             # Filter out nodes that are too close to existing stations
             candidate_nodes = nodes_proj[~nodes_proj.intersects(buffered_stations.unary_union)]
             
-            # Convert back to original CRS
             candidate_nodes = candidate_nodes.to_crs(nodes_filtered.crs)
             
         except Exception as e:
             print(f"Error with CRS transformation, using degree-based approximation: {e}")
-            # Fallback to degree-based buffer (less accurate)
             buffered_stations = existing_stations.copy()
             buffered_stations['geometry'] = buffered_stations.geometry.buffer(MIN_DISTANCE_BETWEEN_STATIONS / 111000)  # Rough conversion from meters to degrees
             
-            # Filter out nodes that are too close to existing stations
             candidate_nodes = nodes_filtered[~nodes_filtered.intersects(buffered_stations.unary_union)]
     else:
         candidate_nodes = nodes_filtered
@@ -365,7 +339,6 @@ def get_candidate_locations(road_nodes, existing_stations, city_gdf, num_candida
     if len(candidate_nodes) > num_candidates:
         candidate_nodes = candidate_nodes.sample(num_candidates)
     
-    # Add an ID field
     candidate_nodes = candidate_nodes.reset_index(drop=True)
     candidate_nodes['location_id'] = [f"L{i+1}" for i in range(len(candidate_nodes))]
     

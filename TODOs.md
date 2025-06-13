@@ -1,6 +1,0 @@
-- Run the result and add to folder
-- Explain the results (all the prints of milp ??)
-- create presentations (MILP - Limor, Project - Darya)
-- add results to presentation - Darya
-- practice the prezentation
-- remove comments?

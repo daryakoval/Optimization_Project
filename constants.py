@@ -3,21 +3,17 @@ from dotenv import load_dotenv
 # Load environment variables (for API keys)
 load_dotenv()
 
-SEED = 17   # good for seatle - 15, portland - 35, austin - 47
-# Define a sample city to analyze
+SEED = 17   
 CITY = "Chicago, IL, USA"
 # Alternative cities to try: "Seattle, WA, USA", "Portland, OR, USA", "San Francisco, CA, USA", "Austin, TX, USA", "Los Angeles, CA, USA", "Chicago, IL, USA"
 
 POPULATION_POINTS = 200
-# Budget constraint ($)
-MAX_BUDGET = 1000000  # $1M budget for new stations
-BASE_STATION_COST = 100000  # Cost per station
+MAX_BUDGET = 1000000  
+BASE_STATION_COST = 100000 
 
-# Coverage parameters
-MAX_COVERAGE_DISTANCE = 1000  # meters
-MIN_DISTANCE_BETWEEN_STATIONS = 500  # meters
+MAX_COVERAGE_DISTANCE = 1000  
+MIN_DISTANCE_BETWEEN_STATIONS = 500  
 
-# Number of candidate locations to consider
 NUM_CANDIDATE_LOCATIONS = 50
 
 # NREL API key - Get from https://developer.nrel.gov/signup/
